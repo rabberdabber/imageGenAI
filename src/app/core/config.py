@@ -49,6 +49,34 @@ class FluxSettings(BaseSettings):
     FLUX_API_KEY: str = config("FLUX_API_KEY")
 
 
+class FileStorageSettings(BaseSettings):
+    UPLOAD_DIR: str = os.path.abspath(
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),  # app directory
+            "uploads"  # uploads directory inside app
+        )
+    )
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+    ALLOWED_EXTENSIONS: set[str] = {"png", "jpg", "jpeg", "gif"}
+    BASE_URL: str = "http://localhost:8000"
+
+
+class DatabaseSettings(BaseSettings):
+    # SQLite configuration
+    DATABASE_URI: str = config(
+        "DATABASE_URI",
+        default="sqlite+aiosqlite:///./sql_app.db"
+    )
+
+    # Optional: For sync operations (if needed)
+    DATABASE_SYNC_URI: str = config(
+        "DATABASE_SYNC_URI",
+        default="sqlite:///./sql_app.db"
+    )
+
+    DB_ECHO: bool = config("DB_ECHO", default=False, cast=bool)
+
+
 class Settings(
     AppSettings,
     CryptSettings,
@@ -56,6 +84,8 @@ class Settings(
     TestSettings,
     EnvironmentSettings,
     FluxSettings,
+    FileStorageSettings,
+    DatabaseSettings,
 ):
     pass
 

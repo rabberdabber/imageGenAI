@@ -5,8 +5,10 @@ from typing import Any
 import anyio
 import fastapi
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
 
 from .config import (
     AppSettings,
@@ -102,8 +104,19 @@ def create_application(
     lifespan = lifespan_factory(settings)
 
     application = FastAPI(lifespan=lifespan, **kwargs)
+
+
+    # Add CORS middleware
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     application.include_router(router)
 
+    application.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
     if isinstance(settings, EnvironmentSettings):

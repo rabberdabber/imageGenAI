@@ -1,14 +1,22 @@
 import asyncio
+import os
 from enum import StrEnum
 from typing import Optional
+from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, HTTPException
+
+# Add these imports to existing ones
+from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile
 from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.config import settings
+from ...core.db.database import get_db
+from ...models.image import Image
 
 router = APIRouter(tags=["images"])
 
@@ -135,4 +143,80 @@ async def generate_image(
             content=f"Error generating image: {str(e)}",
             status_code=500,
             media_type="text/plain"
+        )
+
+
+
+# Add this function to handle file uploads
+def is_valid_file(filename: str) -> bool:
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in settings.ALLOWED_EXTENSIONS
+
+@router.post("/upload/{image_id}")
+async def upload_image(
+    image_id: UUID = Path(..., description="The UUID for the image"),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Upload an image with a specific UUID and return its URL."""
+    image_id_str = str(image_id)
+    try:
+        if not is_valid_file(file.filename):
+            raise HTTPException(
+                status_code=400,
+                detail="File type not allowed"
+            )
+
+        # Create uploads directory if it doesn't exist
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+        # Generate unique filename using the provided UUID
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"{image_id_str}.{ext}"
+        file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
+
+        # Check if UUID already exists
+        result = await db.execute(select(Image).where(Image.id == image_id_str))
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image with ID {image_id_str} already exists"
+            )
+
+        # Save file
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+
+        # Create URL
+        url = f"{settings.BASE_URL}/uploads/{unique_filename}"
+
+        # Create new image record with specified UUID
+        db_image = Image(
+            id=image_id_str,
+            filename=unique_filename,
+            original_filename=file.filename,
+            file_path=file_path,
+            url=url,
+            content_type=file.content_type
+        )
+
+        # Add and commit to database
+        db.add(db_image)
+        await db.commit()
+        await db.refresh(db_image)
+
+        return {
+            "id": str(db_image.id),  # Convert UUID to string for JSON response
+            "url": db_image.url,
+            "filename": db_image.filename
+        }
+
+    except Exception as e:
+        # Clean up file if database operation fails
+        if 'file_path' in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+        logger.error(f"Error uploading file: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error uploading file: {str(e)}"
         )
