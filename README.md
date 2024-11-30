@@ -62,6 +62,12 @@ poetry install
 poetry shell
 ```
 
+3. Run the APP
+
+```bash
+poetry run uvicorn src.app.main:app --reload
+```
+
 #### Using Docker
 
 1. Build and run the containers:
